@@ -7,6 +7,10 @@ Live at https://www.tiagomartinspinto.com. Deployed via GitHub Pages directly fr
 (no build step, no GitHub Actions). It presents an artistic-research practice — do not
 treat it as a generic template or demo project.
 
+Read `PROJECT_DIRECTION.md` before substantial content, design, interaction, or
+architectural changes. It records the portfolio's durable identity and principles;
+`PROJECT_STATUS.md` records the current operational handoff.
+
 ## Stack constraints (hard rules)
 
 - Vanilla HTML/CSS/JavaScript only. No frameworks (React, Vue, Svelte, etc.) unless the
@@ -29,11 +33,14 @@ out before making it.
 
 ## Accessibility & motion
 
-Preserve existing accessibility behavior: dialog focus trapping, `aria-live` status
-regions, semantic markup, WCAG 2.2 touch-target sizing, and keyboard/Escape handling in
-`project-dialog` and `image-lightbox`. Preserve `prefers-reduced-motion` handling in
-`styles.css`, `script.js`, and `background.js` — any new animation or transition must
-respect it.
+Preserve existing accessibility behavior: `aria-live` status regions, semantic markup,
+WCAG 2.2 touch-target sizing, and keyboard/Escape handling in the inline project detail
+and the `image-lightbox`. The project detail is intentionally not a modal — it has no
+`role="dialog"`, no `aria-modal`, and no focus trap, so normal Tab order continues through
+and past it; do not add modal semantics or a focus trap to it. The image lightbox is a
+genuine modal dialog and keeps its own focus/backdrop/Escape handling. Preserve
+`prefers-reduced-motion` handling in `styles.css`, `script.js`, and `background.js` — any
+new animation or transition must respect it.
 
 ## Content integrity
 

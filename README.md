@@ -28,9 +28,14 @@ data/projects.js
 data/site.js
 assets/favicon.ico
 assets/projects/[project-slug]/
-_config.yml
+PROJECT_DIRECTION.md
 PROJECT_STATUS.md
 ```
+
+`PROJECT_DIRECTION.md` records the portfolio's durable identity and decision-making
+principles. Read it before substantial content, design, interaction, or architectural
+changes. `PROJECT_STATUS.md` is the shorter operational handoff for current state and
+follow-up work.
 
 ## Working On The Site
 
@@ -84,7 +89,7 @@ The public gallery supports mixed project media:
 }
 ```
 
-For an image, `thumbnail` is optional and points at a smaller, same-aspect-ratio version used only for the grid and gallery thumbnails. The full `src` is still used in the project modal and the lightbox. `width` and `height` describe the full `src`. The first media item of each project carries a downscaled `*-thumb.jpg` (max 640px on the long edge) so the grid stays light; these can be generated with the built-in `sips` tool and add no dependencies.
+For an image, `thumbnail` is optional and points at a smaller, same-aspect-ratio version used only for the grid and gallery thumbnails. The full `src` is still used in the project detail view and the lightbox. `width` and `height` describe the full `src`. The first media item of each project carries a downscaled `*-thumb.jpg` (max 640px on the long edge) so the grid stays light; these can be generated with the built-in `sips` tool and add no dependencies.
 
 ```js
 {
@@ -138,7 +143,7 @@ Images should stay local under `assets/projects/[slug]/`. Use YouTube or Vimeo f
 
 Video and audio thumbnails are never borrowed from another project image or nearby gallery image. Video thumbnails can come only from the media item's own `thumbnail` field, or from the video's own YouTube ID when `provider: "youtube"` has no explicit thumbnail. Vimeo, local-file, and direct-URL videos do not get guessed thumbnails; without an explicit thumbnail they show a neutral `video` placeholder. Audio without an explicit thumbnail shows a neutral `audio` placeholder.
 
-Gallery thumbnails may crop for compact browsing. In the project modal, selected image media is shown inside a stable contained frame, and clicking the feature image or its small expand control opens a minimal full-image view. The full view is uncropped and closes with Esc, the close button, or a backdrop click.
+Gallery thumbnails may crop for compact browsing. In the project detail view, selected image media is shown inside a stable contained frame, and clicking the feature image or its small expand control opens a minimal full-image view (the image lightbox). The full view is uncropped and closes with Esc, the close button, or a backdrop click.
 
 Draft projects can stay in `data/projects.js` with `draft: true`. They remain in the file but the public portfolio hides them and public filters ignore them.
 
@@ -161,7 +166,7 @@ Site-wide text and links live in:
 data/site.js
 ```
 
-This file stores document metadata, social preview metadata, header text, contact email, footer links, about text, location text, and Aalto role links. Layout structure, CSS, modal behavior, and project-grid behavior remain code-only.
+This file stores document metadata, social preview metadata, header text, contact email, footer links, about text, location text, and Aalto role links. Layout structure, CSS, project-detail behavior, and project-grid behavior remain code-only.
 
 ## GitHub Pages Deployment
 

@@ -64,12 +64,46 @@
       </noscript>
       <p class="site-intro section" id="site-intro" hidden></p>
       <section class="section section--work" id="work">
-        <div class="filters" id="project-filters" role="group" aria-label="Project filters"></div>
+        <div class="filters" id="project-filters" role="group" aria-label="Project lenses"></div>
         <p class="visually-hidden" id="project-status" role="status" aria-live="polite"></p>
         <div class="project-loading" id="project-loading" role="status" aria-live="polite" aria-label="Loading projects">
           ::
         </div>
         <div class="project-grid" id="project-grid"></div>
+        <section class="project-inline" id="project-inline" aria-labelledby="project-inline-title" hidden>
+          <button class="project-inline__close" id="project-inline-close" type="button" aria-label="Close project details">
+            ×
+          </button>
+
+          <div class="project-inline__content">
+            <div class="project-detail__media">
+              <figure class="project-detail__feature" id="project-inline-feature-media"></figure>
+              <div class="project-detail__gallery" id="project-inline-gallery" aria-label="Project media gallery"></div>
+            </div>
+
+            <div class="project-detail__copy">
+              <p class="project-detail__kicker" id="project-inline-kicker"></p>
+              <h2 id="project-inline-title" tabindex="-1"></h2>
+              <dl class="project-meta">
+                <div>
+                  <dt>Year</dt>
+                  <dd id="project-inline-year"></dd>
+                </div>
+                <div>
+                  <dt>Role</dt>
+                  <dd id="project-inline-role"></dd>
+                </div>
+                <div>
+                  <dt>Type</dt>
+                  <dd id="project-inline-type"></dd>
+                </div>
+              </dl>
+              <ul class="tag-list" id="project-inline-tags"></ul>
+              <div class="project-description" id="project-inline-description"></div>
+              <div class="project-links" id="project-inline-links"></div>
+            </div>
+          </div>
+        </section>
         <button class="load-more-projects" id="load-more-projects" type="button" aria-label="Load more projects" title="Load more projects" hidden>
           +
         </button>
@@ -94,43 +128,6 @@
         </section>
       </div>
     </footer>
-
-    <dialog class="project-dialog" id="project-dialog" aria-labelledby="project-dialog-title" aria-describedby="project-description" aria-modal="true">
-      <div class="project-dialog__inner">
-        <button class="project-dialog__close" id="project-dialog-close" type="button" aria-label="Close project details">
-          ×
-        </button>
-
-        <div class="project-dialog__content" id="project-dialog-content">
-          <div class="project-dialog__media">
-            <figure class="project-dialog__feature" id="project-feature-media"></figure>
-            <div class="project-dialog__gallery" id="project-gallery" aria-label="Project media gallery"></div>
-          </div>
-
-          <div class="project-dialog__copy">
-            <p class="project-dialog__kicker" id="project-dialog-kicker"></p>
-            <h2 id="project-dialog-title"></h2>
-            <dl class="project-meta">
-              <div>
-                <dt>Year</dt>
-                <dd id="project-year"></dd>
-              </div>
-              <div>
-                <dt>Role</dt>
-                <dd id="project-role"></dd>
-              </div>
-              <div>
-                <dt>Type</dt>
-                <dd id="project-type"></dd>
-              </div>
-            </dl>
-            <ul class="tag-list" id="project-tags"></ul>
-            <div class="project-description" id="project-description"></div>
-            <div class="project-links" id="project-links"></div>
-          </div>
-        </div>
-      </div>
-    </dialog>
 
     <dialog class="image-lightbox" id="image-lightbox" aria-label="Full image view">
       <button class="image-lightbox__close" id="image-lightbox-close" type="button" aria-label="Close full image view">

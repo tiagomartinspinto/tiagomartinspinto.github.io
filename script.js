@@ -2,11 +2,21 @@ import { PROJECTS, PROJECT_DISPLAY_FILTERS } from "./data/projects.js";
 import { SITE } from "./data/site.js";
 
 const state = {
-  activeFilter: "all",
+  activeLens: "all",
+  hasRenderedProjects: false,
   lastTrigger: null,
   lightboxTrigger: null,
-  visibleCount: 0,
-  openProjectSlug: null
+  openProjectSlug: null,
+  openProjectMode: null,
+  // True only while the currently-open project's history entry was pushed by
+  // an in-page navigation this session controlled (an interactive open, or a
+  // hashchange/popstate reconciliation) rather than by landing on a project
+  // hash directly (initial load or reload). Only in that case is it safe for
+  // an explicit Close to consume the entry with `history.back()`; otherwise
+  // Close must fall back to the existing silent hash-clearing behavior so it
+  // can never navigate the visitor off the portfolio.
+  projectHashPushedLocally: false,
+  visibleCount: 0
 };
 
 const elements = {
@@ -15,22 +25,25 @@ const elements = {
   loading: document.querySelector("#project-loading"),
   projectGrid: document.querySelector("#project-grid"),
   loadMoreButton: document.querySelector("#load-more-projects"),
-  dialog: document.querySelector("#project-dialog"),
-  dialogClose: document.querySelector("#project-dialog-close"),
-  featureMedia: document.querySelector("#project-feature-media"),
-  gallery: document.querySelector("#project-gallery"),
+  inlineDetail: document.querySelector("#project-inline"),
+  inlineClose: document.querySelector("#project-inline-close"),
   lightbox: document.querySelector("#image-lightbox"),
   lightboxClose: document.querySelector("#image-lightbox-close"),
   lightboxImage: document.querySelector("#image-lightbox-image"),
-  lightboxCaption: document.querySelector("#image-lightbox-caption"),
-  dialogKicker: document.querySelector("#project-dialog-kicker"),
-  dialogTitle: document.querySelector("#project-dialog-title"),
-  dialogYear: document.querySelector("#project-year"),
-  dialogRole: document.querySelector("#project-role"),
-  dialogType: document.querySelector("#project-type"),
-  dialogTags: document.querySelector("#project-tags"),
-  dialogDescription: document.querySelector("#project-description"),
-  dialogLinks: document.querySelector("#project-links")
+  lightboxCaption: document.querySelector("#image-lightbox-caption")
+};
+
+const inlineElements = {
+  featureMedia: document.querySelector("#project-inline-feature-media"),
+  gallery: document.querySelector("#project-inline-gallery"),
+  kicker: document.querySelector("#project-inline-kicker"),
+  title: document.querySelector("#project-inline-title"),
+  year: document.querySelector("#project-inline-year"),
+  role: document.querySelector("#project-inline-role"),
+  type: document.querySelector("#project-inline-type"),
+  tags: document.querySelector("#project-inline-tags"),
+  description: document.querySelector("#project-inline-description"),
+  links: document.querySelector("#project-inline-links")
 };
 
 const shellElements = {
@@ -46,6 +59,11 @@ const shellElements = {
 };
 
 const publishedProjects = PROJECTS.filter((project) => project.draft !== true);
+const PROJECT_LENSES = PROJECT_DISPLAY_FILTERS.filter((filter) =>
+  ["all", "learning", "research", "moving image"].includes(filter)
+);
+const PROJECT_HASH_KEY = "project=";
+const PROJECT_HASH_PREFIX = `#${PROJECT_HASH_KEY}`;
 
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const compactGridQuery = window.matchMedia("(max-width: 1100px)");
@@ -60,16 +78,29 @@ const FILTER_LABELS = {
   "moving image": "Moving Image"
 };
 
+const CATEGORY_LABELS = {
+  all: "All",
+  learning: "Learning",
+  community: "Community",
+  research: "Research",
+  exhibitions: "Exhibitions",
+  web: "Web",
+  "moving image": "Moving image"
+};
+
 const labelForFilter = (filter) =>
   FILTER_LABELS[filter] || filter;
 
-const matchesFilter = (project, filter) =>
-  filter === "all" || project.categories.includes(filter);
+const labelForCategory = (category) =>
+  CATEGORY_LABELS[category] || category;
+
+const matchesLens = (project, lens) =>
+  lens === "all" || project.categories.includes(lens);
 
 const getVisibleProjects = () =>
-  publishedProjects.filter((project) => matchesFilter(project, state.activeFilter));
+  publishedProjects;
 
-const getInitialProjectCount = () => (compactGridQuery.matches ? 6 : 8);
+const getInitialProjectCount = () => publishedProjects.length;
 
 const getProjectRevealCount = () => (compactGridQuery.matches ? 3 : 4);
 
@@ -337,7 +368,7 @@ const createMediaCaption = (item) => {
   }
 
   const caption = document.createElement("figcaption");
-  caption.className = "project-dialog__caption";
+  caption.className = "project-detail__caption";
   caption.textContent = item.caption;
   return caption;
 };
@@ -347,18 +378,18 @@ const createFilterButton = (filter) => {
   button.type = "button";
   button.className = "filter-pill";
   button.dataset.filter = filter;
-  button.textContent = labelForFilter(filter);
-  button.setAttribute("aria-pressed", String(filter === state.activeFilter));
+  button.textContent = labelForCategory(filter);
+  button.setAttribute("aria-pressed", String(filter === state.activeLens));
 
   button.addEventListener("click", () => {
-    setFilter(filter);
+    setLens(filter);
   });
 
   return button;
 };
 
 const renderFilters = () => {
-  elements.filterBar.replaceChildren(...PROJECT_DISPLAY_FILTERS.map(createFilterButton));
+  elements.filterBar.replaceChildren(...PROJECT_LENSES.map(createFilterButton));
 };
 
 const markImageLoaded = (image) => {
@@ -388,11 +419,24 @@ const updateLoadMoreButton = (totalProjects) => {
 };
 
 const announceProjectCount = (shown, total) => {
-  const scope = state.activeFilter === "all" ? "" : ` in ${labelForFilter(state.activeFilter)}`;
-  const noun = total === 1 ? "project" : "projects";
+  if (state.activeLens === "all") {
+    elements.projectStatus.textContent = `${shown} projects in chronological order.`;
+    return;
+  }
 
+  const matching = publishedProjects.filter((project) => matchesLens(project, state.activeLens)).length;
   elements.projectStatus.textContent =
-    shown < total ? `Showing ${shown} of ${total} ${noun}${scope}.` : `${total} ${noun}${scope}.`;
+    `${matching} of ${total} projects relate to ${labelForCategory(state.activeLens)}. All projects remain available.`;
+};
+
+const applyLensToCard = (card, project) => {
+  const lensIsActive = state.activeLens !== "all";
+  const isMatch = matchesLens(project, state.activeLens);
+
+  card.classList.toggle("is-lens-match", lensIsActive && isMatch);
+  card.querySelectorAll("[data-category]").forEach((category) => {
+    category.classList.toggle("is-active", category.dataset.category === state.activeLens);
+  });
 };
 
 const closeImageLightbox = ({ restoreFocus = true } = {}) => {
@@ -433,12 +477,12 @@ const openImageLightbox = (media, projectTitle, trigger) => {
 const createImageOpenButton = (media, projectTitle, image) => {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "project-dialog__image-open";
+  button.className = "project-detail__image-open";
   button.setAttribute("aria-label", "View image larger");
   button.title = "View image larger";
 
   const label = document.createElement("span");
-  label.className = "project-dialog__larger-label";
+  label.className = "project-detail__larger-label";
   label.textContent = "⤢";
 
   button.append(image, label);
@@ -454,13 +498,24 @@ const renderProjects = () => {
   projectsToRender.forEach((project, index) => {
     const card = document.createElement("article");
     card.className = "project-card";
+    card.dataset.projectSlug = project.slug;
     card.style.setProperty("--card-index", String(index));
+    if (!state.hasRenderedProjects) {
+      card.classList.add("is-entering");
+    }
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "project-card__button";
-    button.setAttribute("aria-label", `Open project: ${project.title}`);
-    button.addEventListener("click", () => openProject(project, button));
+    const anchor = document.createElement("a");
+    anchor.className = "project-card__button";
+    anchor.href = `${PROJECT_HASH_PREFIX}${encodeURIComponent(project.slug)}`;
+    anchor.setAttribute("aria-controls", "project-inline");
+    anchor.setAttribute("aria-expanded", "false");
+    anchor.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      event.preventDefault();
+      openProject(project, anchor);
+    });
 
     const media = getPrimaryVisualMedia(project);
     const thumbnailSource = getThumbnailSource(media);
@@ -497,48 +552,67 @@ const renderProjects = () => {
     const body = document.createElement("div");
     body.className = "project-card__body";
     const title = document.createElement("h3");
+    title.id = `project-title-${project.slug}`;
     title.textContent = project.title;
+    const metadata = document.createElement("p");
+    metadata.id = `project-meta-${project.slug}`;
+    metadata.className = "project-card__meta";
+    const year = document.createElement("span");
+    year.textContent = project.year;
+    metadata.append(year);
+    project.categories.forEach((category) => {
+      const categoryElement = document.createElement("span");
+      categoryElement.className = "project-card__meta-category";
+      categoryElement.dataset.category = category;
+      categoryElement.textContent = labelForCategory(category);
+      metadata.append(categoryElement);
+    });
     const line = document.createElement("p");
+    line.id = `project-description-${project.slug}`;
     line.className = "project-card__line";
     line.textContent = project.shortDescription;
-    body.append(title, line);
+    body.append(title, metadata, line);
 
-    button.append(imageWrap, body);
-    card.append(button);
+    anchor.setAttribute("aria-labelledby", title.id);
+    anchor.setAttribute("aria-describedby", `${metadata.id} ${line.id}`);
+    anchor.append(imageWrap, body);
+    card.append(anchor);
+    applyLensToCard(card, project);
     fragment.append(card);
   });
 
   elements.projectGrid.replaceChildren(fragment);
+  state.hasRenderedProjects = true;
   elements.loading.hidden = true;
   updateLoadMoreButton(visibleProjects.length);
   announceProjectCount(projectsToRender.length, visibleProjects.length);
 };
 
-const updateFeatureMedia = (item, projectTitle) => {
+const updateFeatureMedia = (item, projectTitle, featureTarget) => {
   const media = normalizeMediaItem(item);
   const content = createMediaFigureContent(media, projectTitle);
   const caption = createMediaCaption(media);
   const frame = document.createElement("div");
-  frame.className = "project-dialog__media-frame";
+  frame.className = "project-detail__media-frame";
   frame.dataset.mediaType = media?.type || "unknown";
   if (media?.type === "image" && content instanceof HTMLImageElement) {
     frame.append(createImageOpenButton(media, projectTitle, content));
   } else {
     frame.append(content);
   }
-  elements.featureMedia.replaceChildren(...[frame, caption].filter(Boolean));
+  featureTarget.replaceChildren(...[frame, caption].filter(Boolean));
 };
 
-const renderGallery = (project) => {
+const renderGallery = (project, galleryTarget, featureTarget) => {
   const mediaItems = getProjectMedia(project);
 
   if (mediaItems.length <= 1) {
-    elements.gallery.replaceChildren();
-    elements.gallery.hidden = true;
+    galleryTarget.replaceChildren();
+    galleryTarget.hidden = true;
     return;
   }
 
-  elements.gallery.hidden = false;
+  galleryTarget.hidden = false;
   const fragment = document.createDocumentFragment();
 
   mediaItems.forEach((item, index) => {
@@ -572,8 +646,8 @@ const renderGallery = (project) => {
     }
 
     button.addEventListener("click", () => {
-      updateFeatureMedia(item, project.title);
-      elements.gallery.querySelectorAll(".gallery-thumb").forEach((thumb) => {
+      updateFeatureMedia(item, project.title, featureTarget);
+      galleryTarget.querySelectorAll(".gallery-thumb").forEach((thumb) => {
         thumb.setAttribute("aria-pressed", String(thumb === button));
       });
     });
@@ -581,20 +655,20 @@ const renderGallery = (project) => {
     fragment.append(button);
   });
 
-  elements.gallery.replaceChildren(fragment);
+  galleryTarget.replaceChildren(fragment);
 };
 
 const renderProjectDetail = (project) => {
-  updateFeatureMedia(getProjectMedia(project)[0], project.title);
-  renderGallery(project);
+  updateFeatureMedia(getProjectMedia(project)[0], project.title, inlineElements.featureMedia);
+  renderGallery(project, inlineElements.gallery, inlineElements.featureMedia);
 
-  elements.dialogKicker.textContent = `${project.projectType} / ${project.year}`;
-  elements.dialogTitle.textContent = project.title;
-  elements.dialogYear.textContent = project.year;
-  elements.dialogRole.textContent = project.role;
-  elements.dialogType.textContent = project.projectType;
+  inlineElements.kicker.textContent = `${project.projectType} / ${project.year}`;
+  inlineElements.title.textContent = project.title;
+  inlineElements.year.textContent = project.year;
+  inlineElements.role.textContent = project.role;
+  inlineElements.type.textContent = project.projectType;
 
-  elements.dialogTags.replaceChildren(
+  inlineElements.tags.replaceChildren(
     ...project.categories.map((tag) => {
       const item = document.createElement("li");
       item.textContent = labelForFilter(tag);
@@ -602,7 +676,7 @@ const renderProjectDetail = (project) => {
     })
   );
 
-  elements.dialogDescription.replaceChildren(
+  inlineElements.description.replaceChildren(
     ...project.fullDescription.map((paragraph) => {
       const element = document.createElement("p");
       element.textContent = paragraph;
@@ -623,45 +697,9 @@ const renderProjectDetail = (project) => {
     }
     linksFragment.append(anchor);
   });
-  elements.dialogLinks.replaceChildren(linksFragment);
-  elements.dialogLinks.hidden = project.links.length === 0;
+  inlineElements.links.replaceChildren(linksFragment);
+  inlineElements.links.hidden = project.links.length === 0;
 };
-
-const getDialogFocusable = () =>
-  Array.from(
-    elements.dialog.querySelectorAll(
-      "button:not([disabled]), a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
-    )
-  );
-
-const trapDialogFocus = (event) => {
-  if (event.key !== "Tab") {
-    return;
-  }
-
-  const focusable = getDialogFocusable();
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-
-  if (!first || !last) {
-    return;
-  }
-
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
-};
-
-// Project deep-linking uses a namespaced fragment, "#project=<slug>", so it
-// never collides with ordinary in-page anchors such as the header's "#top"
-// link. Anything outside this namespace is never read, decoded, rewritten,
-// or removed by this code.
-const PROJECT_HASH_KEY = "project=";
-const PROJECT_HASH_PREFIX = `#${PROJECT_HASH_KEY}`;
 
 // Distinguishes three cases explicitly rather than collapsing them into one
 // empty-string result: a hash outside our namespace ("none"), a hash inside
@@ -688,43 +726,126 @@ const clearProjectHashSilently = () => {
   history.replaceState(null, "", location.pathname + location.search);
 };
 
-const presentProject = (project, trigger) => {
-  const alreadyOpen = elements.dialog.open;
-  if (trigger || !alreadyOpen) {
-    state.lastTrigger = trigger || document.activeElement;
-  }
-  state.openProjectSlug = project.slug;
-  renderProjectDetail(project);
-  if (!alreadyOpen) {
-    elements.dialog.showModal();
-    elements.dialog.scrollTop = 0;
-    elements.dialogClose.focus();
-  }
+const resetInlinePresentation = () => {
+  elements.projectGrid.classList.remove("has-inline-detail");
+  elements.projectGrid.querySelectorAll(".project-card.is-selected").forEach((card) => {
+    card.classList.remove("is-selected");
+    card.querySelector("[aria-expanded]")?.setAttribute("aria-expanded", "false");
+  });
+  elements.inlineDetail.hidden = true;
+  elements.projectGrid.after(elements.inlineDetail);
 };
 
-// Path A (explicit user action: close button, Escape, backdrop click) owns
-// history mutation. Path B (URL/location synchronization reconciling the
-// dialog to whatever the address bar currently shows — Back/Forward,
-// invalid-hash normalization, or a hash outside our namespace) must be able
-// to close the dialog without ever touching history itself. `updateHistory`
-// makes that distinction explicit at every call site instead of inferring it
-// from whatever the hash currently happens to be.
-const dismissProject = ({ updateHistory }) => {
-  closeImageLightbox({ restoreFocus: false });
-  if (elements.dialog.open) {
-    elements.dialog.close();
+const presentInlineProject = (project, trigger) => {
+  if (trigger || state.openProjectMode !== "inline") {
+    state.lastTrigger = trigger || document.activeElement;
   }
+
+  state.openProjectSlug = project.slug;
+  state.openProjectMode = "inline";
+
+  renderProjectDetail(project);
+  resetInlinePresentation();
+
+  const card = elements.projectGrid.querySelector(`[data-project-slug="${project.slug}"]`);
+  const projectLink = card?.querySelector(".project-card__button");
+  card?.classList.add("is-selected");
+  projectLink?.setAttribute("aria-expanded", "true");
+  if (card) {
+    card.after(elements.inlineDetail);
+  }
+  elements.projectGrid.classList.add("has-inline-detail");
+  elements.inlineDetail.hidden = false;
+  elements.projectStatus.textContent = `${project.title} details opened in the project field.`;
+
+  if (trigger) {
+    // Interactive open (a project card/link activated in-page): the trigger
+    // already has focus and the project unfolds in place, so keyboard focus
+    // is deliberately left alone rather than redirected anywhere.
+    return;
+  }
+
+  // Direct/deep-link open (initial load landing on a project hash, or a
+  // hashchange/popstate reconciling to one) has no in-page trigger to
+  // preserve focus on. Land focus on the detail's own heading — a real
+  // content landmark, not the Close control — and let the browser's default
+  // focus-triggered scroll bring the expanded project into view. The
+  // heading is focusable only programmatically (tabindex="-1" in markup),
+  // never part of ordinary Tab order.
+  inlineElements.title.focus();
+};
+
+// Path A (explicit user action: Close button, Escape) owns history mutation.
+// Path B (URL/location synchronization reconciling the open project to
+// whatever the address bar currently shows — Back/Forward, invalid-hash
+// normalization, or a hash outside our namespace) must be able to close the
+// project detail without ever touching history itself. `updateHistory` makes
+// that distinction explicit at every call site instead of inferring it from
+// whatever the hash currently happens to be.
+const dismissProject = ({ updateHistory, restoreFocus = true }) => {
+  // Closing already-closed UI happens legitimately: `history.back()` below,
+  // when it consumes a locally-pushed entry, lands back on a hashless entry
+  // and fires its own popstate, which reconciles here a second time after
+  // this function has already finished tearing everything down. Without this
+  // guard that second pass would repeat the teardown and, since
+  // `lastTrigger`/the push flag are already cleared, do so with stale state.
+  if (!updateHistory && state.openProjectSlug === null && state.openProjectMode === null) {
+    return;
+  }
+
+  const trigger = state.lastTrigger;
+  const wasPushedLocally = state.projectHashPushedLocally;
+  state.lastTrigger = null;
+  state.openProjectSlug = null;
+  state.openProjectMode = null;
+  state.projectHashPushedLocally = false;
+  closeImageLightbox({ restoreFocus: false });
+  resetInlinePresentation();
   if (updateHistory && location.hash.startsWith(PROJECT_HASH_PREFIX)) {
-    clearProjectHashSilently();
+    // Prefer consuming the entry opening pushed, so Back lands on whatever
+    // meaningfully preceded it instead of a second, duplicate closed state.
+    // Only safe when this session did the pushing (see `projectHashPushedLocally`)
+    // — otherwise (a direct deep link, or a reload while deep-linked) there is
+    // no guarantee a previous entry belongs to this site at all.
+    if (wasPushedLocally) {
+      history.back();
+    } else {
+      clearProjectHashSilently();
+    }
+  }
+  announceProjectCount(publishedProjects.length, publishedProjects.length);
+  if (restoreFocus && trigger instanceof HTMLElement && trigger.isConnected) {
+    trigger.focus({ preventScroll: true });
   }
 };
 
 const openProject = (project, trigger) => {
-  presentProject(project, trigger);
+  // Captured before presentInlineProject() mutates it: switching directly
+  // from one open project to another (both visible in the same grid) is a
+  // real path, not just closed -> open.
+  const previousSlug = state.openProjectSlug;
+  presentInlineProject(project, trigger);
   const targetHash = PROJECT_HASH_KEY + project.slug;
-  if (location.hash !== `#${targetHash}`) {
-    location.hash = targetHash;
+  if (location.hash === `#${targetHash}`) {
+    return;
   }
+
+  if (previousSlug && previousSlug !== project.slug) {
+    // Switching directly between two open projects must replace the hash in
+    // place. Pushing a second entry here would leave the first project's
+    // entry sitting in history as a dead middle step between the pre-open
+    // page and this one — the same failure `dismissProject` already guards
+    // against on Close, but on the open side.
+    history.replaceState(null, "", location.pathname + location.search + `#${targetHash}`);
+    return;
+  }
+
+  // This push is what a subsequent explicit Close needs to consume with
+  // `history.back()` rather than replace in place; record it before the
+  // hashchange it triggers reconciles below and no-ops on an already-open
+  // match.
+  state.projectHashPushedLocally = true;
+  location.hash = targetHash;
 };
 
 const closeProject = () => {
@@ -734,7 +855,15 @@ const closeProject = () => {
 // The single reconciliation function driving both hashchange and popstate.
 // It only ever reads the current location and never pushes/replaces history
 // itself, except to clean up our own invalid namespaced hashes (case 2).
-const syncDialogWithLocation = () => {
+//
+// `event` is only used to tell apart the initial, direct call made once at
+// startup (`event` undefined — the page loaded straight onto whatever hash is
+// in the address bar, via a deep link or a reload) from every later call,
+// which is always a real hashchange/popstate firing in an already-running
+// page. Only in the latter case is the entry immediately behind the one we
+// are about to open guaranteed to be a same-session portfolio state, so only
+// there is it safe to mark the project as locally pushed for `closeProject`.
+const syncProjectWithLocation = (event) => {
   const parsed = parseProjectHash();
 
   if (parsed.kind === "none") {
@@ -756,33 +885,34 @@ const syncDialogWithLocation = () => {
   }
 
   // Case 1: a valid, published project.
-  if (elements.dialog.open && state.openProjectSlug === parsed.slug) {
+  if (state.openProjectSlug === parsed.slug && state.openProjectMode) {
     return;
   }
 
-  presentProject(project);
+  // Reopening via a real hashchange/popstate (Forward back into a pushed
+  // entry, or a hash typed straight into the address bar) still guarantees a
+  // same-session entry sits immediately behind this one. Only the initial,
+  // event-less call — landing on this hash with no prior in-page navigation —
+  // cannot make that guarantee.
+  state.projectHashPushedLocally = Boolean(event);
+  presentInlineProject(project);
 };
 
-const handleDialogKeydown = (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeProject();
-    return;
-  }
-
-  trapDialogFocus(event);
-};
-
-const setFilter = (filter) => {
-  state.activeFilter = filter;
-  resetVisibleCount();
+const setLens = (lens) => {
+  state.activeLens = lens;
 
   elements.filterBar.querySelectorAll(".filter-pill").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.filter === filter);
-    button.setAttribute("aria-pressed", String(button.dataset.filter === filter));
+    button.classList.toggle("is-active", button.dataset.filter === lens);
+    button.setAttribute("aria-pressed", String(button.dataset.filter === lens));
   });
 
-  renderProjects();
+  elements.projectGrid.querySelectorAll(".project-card").forEach((card) => {
+    const project = findProjectBySlug(card.dataset.projectSlug);
+    if (project) {
+      applyLensToCard(card, project);
+    }
+  });
+  announceProjectCount(publishedProjects.length, publishedProjects.length);
 };
 
 const toggleProjectCount = () => {
@@ -805,29 +935,7 @@ const toggleProjectCount = () => {
 
 elements.loadMoreButton.addEventListener("click", toggleProjectCount);
 
-elements.dialogClose.addEventListener("click", closeProject);
-
-elements.dialog.addEventListener("click", (event) => {
-  if (event.target === elements.dialog) {
-    closeProject();
-  }
-});
-
-elements.dialog.addEventListener("keydown", handleDialogKeydown);
-
-elements.dialog.addEventListener("cancel", (event) => {
-  event.preventDefault();
-  closeProject();
-});
-
-elements.dialog.addEventListener("close", () => {
-  state.openProjectSlug = null;
-  const trigger = state.lastTrigger;
-  state.lastTrigger = null;
-  if (trigger instanceof HTMLElement) {
-    trigger.focus();
-  }
-});
+elements.inlineClose.addEventListener("click", closeProject);
 
 elements.lightboxClose.addEventListener("click", () => closeImageLightbox());
 
@@ -859,14 +967,28 @@ elements.lightbox.addEventListener("close", () => {
   }
 });
 
+document.addEventListener("keydown", (event) => {
+  if (
+    event.key !== "Escape" ||
+    state.openProjectMode !== "inline" ||
+    (event.target instanceof Element && event.target.closest("#image-lightbox"))
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  closeProject();
+});
+
 renderSiteShell();
 renderFilters();
 resetVisibleCount();
-setFilter("all");
+renderProjects();
+setLens("all");
 
-window.addEventListener("hashchange", syncDialogWithLocation);
-window.addEventListener("popstate", syncDialogWithLocation);
-syncDialogWithLocation();
+window.addEventListener("hashchange", syncProjectWithLocation);
+window.addEventListener("popstate", syncProjectWithLocation);
+syncProjectWithLocation();
 
 const markPageReady = () => {
   document.body.classList.remove("is-building");
