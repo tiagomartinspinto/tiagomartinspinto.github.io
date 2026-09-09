@@ -112,5 +112,7 @@ class-rename / deep-link-focus / breakpoint cleanup pass:
 ## Recent Implementation State
 
 The relational-archive redesign (inline project detail, relational lenses, deep-link/
-history model, and the responsive-grid/breakpoint adjustment) is committed locally on
-`main` but not yet pushed to `origin/main`.
+history model, and the responsive-grid/breakpoint adjustment) is deployed to production
+at commit `4e2e24b5268bac6dd05f7782cc22317e11b65f0c`. Local and remote `main` are
+synchronized. Production verification at tiagomartinspinto.com found no known blocking
+or follow-up defects.
